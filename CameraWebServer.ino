@@ -1,5 +1,6 @@
 #include "esp_camera.h"
 #include <WiFi.h>
+#include <HTTPClient.h>
 
 //
 // WARNING!!! Make sure that you have either selected ESP32 Wrover Module,
@@ -12,8 +13,10 @@
 #define CAMERA_MODEL_AI_THINKER
 
 // ssid 只支持2.4gHz，并且需要公开
-const char* ssid = "PUBLIC_OPEN_SSID";
-const char* password = "WIFI_PASSWORD";
+const char* ssid = "YourWiFiNetwork";      // 替换为您的WiFi网络名称
+const char* password = "YourWiFiPassword"; // 替换为您的WiFi密码
+// const char* cameraIP = "192.168.1.100";     // 替换为相机的IP地址
+const char* serverURL = "http://SAVEIMAGE.COM/UPLOAD"; // 替换为远程服务器的URL
 
 #if defined(CAMERA_MODEL_WROVER_KIT)
 #define PWDN_GPIO_NUM    -1
@@ -142,7 +145,49 @@ void setup() {
   Serial.println("' to connect");
 }
 
+// 封装的图片转发函数
+void sendImageToServer() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String url = "http://" + String(WiFi.localIP()) + "/capture";
+
+    // 发送GET请求
+    http.begin(url);
+    int httpCode = http.GET();
+
+    if (httpCode == HTTP_CODE_OK) {
+      // 获取响应的二进制数据流
+      WiFiClient* stream = http.getStreamPtr();
+
+      // 创建一个新的HTTPClient对象，用于发送图像数据到远程服务器
+      HTTPClient upload;
+      upload.begin(serverURL);
+
+      // 设置Content-Type为multipart/form-data
+      upload.addHeader("Content-Type", "multipart/form-data");
+
+      // 将图像数据发送到远程服务器
+      while (stream->available()) {
+        uint8_t data = stream->read();
+        upload.write(data);
+      }
+
+      // 结束上传请求
+      upload.end();
+
+      Serial.println("Image uploaded");
+    } else {
+      Serial.println("HTTP request failed");
+    }
+
+    http.end();
+  }
+}
+
 void loop() {
   // put your main code here, to run repeatedly:
+  // 调用图片转发函数
+  sendImageToServer();
+
   delay(10000);
 }
