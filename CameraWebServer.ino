@@ -149,7 +149,7 @@ void setup() {
 void sendImageToServer() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    String url = "http://" + String(WiFi.localIP()) + "/capture";
+    String url = "http://" + WiFi.localIP().toString() + "/capture";
 
     // 发送GET请求
     http.begin(url);
@@ -167,11 +167,14 @@ void sendImageToServer() {
       upload.addHeader("Content-Type", "multipart/form-data");
 
       // 将图像数据发送到远程服务器
-      while (stream->available()) {
-        uint8_t data = stream->read();
-        upload.write(data);
+      if (stream->available()) {
+        while (stream->available()) {
+          uint8_t data = stream->read();
+          upload.addHeader("Content-Length", String(data));
+          upload.POST(&data, 1);
+        }
       }
-
+      
       // 结束上传请求
       upload.end();
 
