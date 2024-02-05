@@ -16,7 +16,8 @@
 const char* ssid = "YourWiFiNetwork";      // 替换为您的WiFi网络名称
 const char* password = "YourWiFiPassword"; // 替换为您的WiFi密码
 // const char* cameraIP = "192.168.1.100";     // 替换为相机的IP地址
-const char* serverURL = "http://SAVEIMAGE.COM/UPLOAD"; // 替换为远程服务器的URL
+const char* serverURL = "http://yourserver.com/api/upload"; // 替换为远程服务器的URL
+const char* serverName = "yourserver.com";
 
 #if defined(CAMERA_MODEL_WROVER_KIT)
 #define PWDN_GPIO_NUM    -1
@@ -146,51 +147,40 @@ void setup() {
 }
 
 // 封装的图片转发函数
-void sendImageToServer() {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    String url = "http://" + WiFi.localIP().toString() + "/capture";
-
-    // 发送GET请求
-    http.begin(url);
-    int httpCode = http.GET();
-
-    if (httpCode == HTTP_CODE_OK) {
-      // 获取响应的二进制数据流
-      WiFiClient* stream = http.getStreamPtr();
-
-      // 创建一个新的HTTPClient对象，用于发送图像数据到远程服务器
-      HTTPClient upload;
-      upload.begin(serverURL);
-
-      // 设置Content-Type为multipart/form-data
-      upload.addHeader("Content-Type", "multipart/form-data");
-
-      // 将图像数据发送到远程服务器
-      if (stream->available()) {
-        while (stream->available()) {
-          uint8_t data = stream->read();
-          upload.addHeader("Content-Length", String(data));
-          upload.POST(&data, 1);
-        }
-      }
-      
-      // 结束上传请求
-      upload.end();
-
-      Serial.println("Image uploaded");
-    } else {
-      Serial.println("HTTP request failed");
-    }
-
-    http.end();
+void postImageToServer() {
+  camera_fb_t * fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("Camera capture failed");
+    return;
   }
-}
-
+  WiFiClient client;
+  if (client.connect(serverName, 80)) {
+    String postEnd = "\r\n--BOUNDARY--\r\n";
+    String postData = "";
+    postData += "--BOUNDARY\r\n";
+    postData += "Content-Disposition: form-data; name=\"image\"; filename=\"esp32-cam.jpg\"\r\n";
+    postData += "Content-Type: image/jpeg\r\n\r\n";
+    client.print("POST /api/upload HTTP/1.1\r\n");
+    client.print("Host: ");
+    client.print(serverName);
+    client.print("\r\n");
+    client.print("Content-Length: ");
+    client.print(postData.length() + fb->len + postEnd.length());
+    client.print("\r\n");
+    client.print("Content-Type: multipart/form-data; boundary=BOUNDARY\r\n\r\n");
+    client.print(postData);
+    client.write(fb->buf, fb->len);
+    client.print(postEnd);
+  }
+  // connect timeout
+  delay(5000);
+  client.stop();
+  esp_camera_fb_return(fb);
+}     
 void loop() {
   // put your main code here, to run repeatedly:
   // 调用图片转发函数
-  sendImageToServer();
+  postImageToServer();
 
-  delay(10000);
+  delay(15000);
 }
